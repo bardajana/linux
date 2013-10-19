@@ -28,9 +28,18 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 
 	if ((from + num <= from) || (from + num > IO_BITMAP_BITS))
 		return -EINVAL;
+#if defined(CONFIG_SCHED_BFS_AUTOISO)
+	if (turn_on) {
+		struct sched_param param = { .sched_priority = 0 };
+		if (!capable(CAP_SYS_RAWIO))
+			return -EPERM;
+		/* Start X as SCHED_ISO */
+		sched_setscheduler_nocheck(current, SCHED_ISO, &param);
+	}
+#else
 	if (turn_on && !capable(CAP_SYS_RAWIO))
 		return -EPERM;
-
+#endif
 	/*
 	 * If it's the first ioperm() call in this thread's lifetime, set the
 	 * IO bitmap up. ioperm() is much less timing critical than clone(),

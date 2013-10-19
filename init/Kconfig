@@ -28,8 +28,14 @@ config BUILDTIME_EXTABLE_SORT
 
 menu "General setup"
 
+choice
+	prompt "CPU Scheduler"
+	default SCHED_BFS
+	---help---
+	  Select the CPU Scheduler to be used.
+
 config SCHED_BFS
-	bool "BFS cpu scheduler"
+	bool "Brain Fuck Scheduler (BFS)"
 	---help---
 	  The Brain Fuck CPU Scheduler for excellent interactivity and
 	  responsiveness on the desktop and solid scalability on normal
@@ -39,8 +45,76 @@ config SCHED_BFS
           TEST so these options are disabled.
 
           Say Y here.
-	default y
 
+config SCHED_CFS
+	bool "Completely Fair Scheduler (CFS)"
+	---help---
+	This is the default cpu scheduler found in the upstream kernel.
+endchoice
+
+config SCHED_BFS_AUTOISO
+	bool "Automatically use SCHED_ISO policy for X"
+	depends on SCHED_BFS
+	default n
+	---help---
+	  Selecting this option will automatically use the SCHED_ISO scheduling
+	  policy for X, resulting in an interactivity boost. This *may* cause
+	  things like skipping sound on audio applications that are not run
+	  as SCHED_ISO.
+
+	  Tasks (including X) can be run as sched_iso manually using schedtool.
+
+
+choice
+	prompt "Zen-Tune Profile"
+	default ZEN_CUSTOM
+	---help---
+	  Select the tunable profile to be used.
+
+config ZEN_DEFAULT
+	bool "Default"
+	---help---
+	  Disables ZEN tuning and selects default options.
+
+	  VM dirty ratio: 20
+	  VM dirty background ratio: 10
+	  Ondemand downsample factor: 1
+
+	  BFS only
+	    ISO task max realtime use: 70%
+	    Scheduling interval: 6 ms
+
+	  CFS only
+	    Scheduling latency: 6 ms
+	    Minimal granularity: 0.75 ms
+	    Wakeup granularity: 1 ms
+	    CPU migration cost: 0.5 ms
+	    Bandwidth slice size: 5 ms
+
+
+config ZEN_CUSTOM
+	bool "Custom"
+	---help---
+	  Tunes the kernel for responsiveness at the cost of throughput and power usage.
+	  These values can be adjusted in include/linux/zentune.h
+
+	  VM dirty ratio: 50
+	  VM dirty background ratio: 20
+	  Ondemand downsample factor: 10
+
+	  BFS only
+	    ISO task max realtime use: 25%
+	    Scheduling interval: 3 ms
+
+	  CFS only
+	    Scheduling latency: 3 ms
+	    Minimal granularity: 0.3 ms
+	    Wakeup granularity: 0.5 ms
+	    CPU migration cost: 0.25 ms
+	    Bandwidth slice size: 3 ms
+
+
+endchoice
 
 config BROKEN
 	bool
@@ -1277,6 +1351,53 @@ config CC_OPTIMIZE_FOR_SIZE
 	  resulting in a smaller kernel.
 
 	  If unsure, say N.
+
+menu "Compiler/flags Options"
+
+config CUSTOM_CFLAGS
+    string "Custom CFLAGS for kernel"
+    default ""
+    help
+        You can use this to easily set custom gcc CFLAGS to be used for the
+        entire kernel (including modules).
+
+	No warning for you, i can't fix stupidity.
+
+        If unsure, leave blank.
+
+config CUSTOM_LDFLAGS
+    string "Custom LDFLAGS for kernel (consider this, if you're stupid)"
+    default ""
+    help
+	What the fuck would you do this for!?!?!
+	No, seriously the kernel doesn't link against anything. so wtf.
+
+        If unsure, leave blank.
+
+config CUSTOM_AFLAGS
+    string "Custom AFLAGS for kernel"
+    default ""
+    help
+        You can use this to easily set custom gcc AFLAGS to be used for the
+        entire kernel (including modules).
+
+	No warning for you, i can't fix stupidity.
+
+        If unsure, leave blank.
+
+config CUSTOM_MAKEFLAGS
+    string "Custom MAKEFLAGS for kernel"
+    default ""
+    help
+        You can use this to easily set custom MAKEFLAGS to be used for building
+        the entire kernel.
+
+	You don't really need this, just type your make options when you build
+	your kernel (make -j723 ?)
+
+        If unsure, leave blank.
+
+endmenu
 
 config SYSCTL
 	bool

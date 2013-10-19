@@ -329,6 +329,7 @@ struct cfq_data {
 
 	unsigned int busy_queues;
 	unsigned int busy_sync_queues;
+	unsigned int busy_idle_queues; /* busy but with idle window */
 
 	int rq_in_driver;
 	int rq_in_flight[2];
@@ -445,6 +446,20 @@ CFQ_CFQQ_FNS(split_coop);
 CFQ_CFQQ_FNS(deep);
 CFQ_CFQQ_FNS(wait_busy);
 #undef CFQ_CFQQ_FNS
+
+static inline void cfq_set_cfqq_idle_window(struct cfq_data *cfqd,
+					    struct cfq_queue *cfqq, bool idle)
+{
+	if (idle) {
+		cfq_mark_cfqq_idle_window(cfqq);
+		if (cfq_cfqq_on_rr(cfqq))
+			cfqd->busy_idle_queues++;
+	} else {
+		cfq_clear_cfqq_idle_window(cfqq);
+		if (cfq_cfqq_on_rr(cfqq))
+			cfqd->busy_idle_queues--;
+	}
+}
 
 static inline struct cfq_group *pd_to_cfqg(struct blkg_policy_data *pd)
 {
@@ -2164,6 +2179,8 @@ static void cfq_add_cfqq_rr(struct cfq_data *cfqd, struct cfq_queue *cfqq)
 	cfqd->busy_queues++;
 	if (cfq_cfqq_sync(cfqq))
 		cfqd->busy_sync_queues++;
+	if (cfq_cfqq_idle_window(cfqq))
+		cfqd->busy_idle_queues++;
 
 	cfq_resort_rr_list(cfqd, cfqq);
 }
@@ -2192,6 +2209,8 @@ static void cfq_del_cfqq_rr(struct cfq_data *cfqd, struct cfq_queue *cfqq)
 	cfqd->busy_queues--;
 	if (cfq_cfqq_sync(cfqq))
 		cfqd->busy_sync_queues--;
+	if (cfq_cfqq_idle_window(cfqq))
+		cfqd->busy_idle_queues--;
 }
 
 /*
@@ -2761,6 +2780,16 @@ static void cfq_arm_slice_timer(struct cfq_data *cfqd)
 	else
 		sl = cfqd->cfq_slice_idle;
 
+	/*
+	 * If there too many queues with idle window, slice idle can cause
+	 * unacceptable latency. Then we reduce slice idle here.
+	 */
+	if (cfqd->busy_idle_queues) {
+		unsigned group_slice = cfq_group_slice(cfqd, cfqq->cfqg);
+		unsigned long limit = group_slice / cfqd->busy_idle_queues;
+		sl = min(sl, limit);
+	}
+
 	mod_timer(&cfqd->idle_slice_timer, jiffies + sl);
 	cfqg_stats_set_start_idle_time(cfqq->cfqg);
 	cfq_log_cfqq(cfqd, cfqq, "arm_idle: %lu group_idle: %d", sl,
@@ -3091,7 +3120,7 @@ static struct cfq_queue *cfq_select_queue(struct cfq_data *cfqd)
 	    (cfq_cfqq_slice_new(cfqq) ||
 	    (cfqq->slice_end - jiffies > jiffies - cfqq->slice_start))) {
 		cfq_clear_cfqq_deep(cfqq);
-		cfq_clear_cfqq_idle_window(cfqq);
+		cfq_set_cfqq_idle_window(cfqd, cfqq, false);
 	}
 
 	if (cfqq->dispatched && cfq_should_idle(cfqd, cfqq)) {
@@ -3742,10 +3771,7 @@ cfq_update_idle_window(struct cfq_data *cfqd, struct cfq_queue *cfqq,
 
 	if (old_idle != enable_idle) {
 		cfq_log_cfqq(cfqd, cfqq, "idle=%d", enable_idle);
-		if (enable_idle)
-			cfq_mark_cfqq_idle_window(cfqq);
-		else
-			cfq_clear_cfqq_idle_window(cfqq);
+		cfq_set_cfqq_idle_window(cfqd, cfqq, enable_idle);
 	}
 }
 
