@@ -1,0 +1,10 @@
+--- mm/mmap.c
++++ mm/mmap.c
+@@ -1614,6 +1633,7 @@
+ 
+ 	vma_link(mm, vma, prev, rb_link, rb_parent);
+ 	file = vma->vm_file;
++	uksm_vma_add_new(vma);
+ 
+ 	/* Once vma denies write, undo our temporary denial count */
+ 	if (correct_wcount)
