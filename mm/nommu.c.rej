@@ -1,0 +1,25 @@
+--- mm/nommu.c
++++ mm/nommu.c
+@@ -792,6 +794,8 @@
+ 		vma->vm_ops->close(vma);
+ 	if (vma->vm_file) {
+ 		fput(vma->vm_file);
++		if (vma->vm_prfile)
++			fput(vma->vm_prfile);
+ 		if (vma->vm_flags & VM_EXECUTABLE)
+ 			removed_exe_file_vma(mm);
+ 	}
+@@ -1443,9 +1449,13 @@
+ error:
+ 	if (region->vm_file)
+ 		fput(region->vm_file);
++	if (region->vm_prfile)
++		fput(region->vm_prfile);
+ 	kmem_cache_free(vm_region_jar, region);
+ 	if (vma->vm_file)
+ 		fput(vma->vm_file);
++	if (vma->vm_prfile)
++		fput(vma->vm_prfile);
+ 	if (vma->vm_flags & VM_EXECUTABLE)
+ 		removed_exe_file_vma(vma->vm_mm);
+ 	kmem_cache_free(vm_area_cachep, vma);
