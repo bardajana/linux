@@ -423,6 +423,7 @@ static int sb_permission(struct super_block *sb, struct inode *inode, int mask)
 	}
 	return 0;
 }
+EXPORT_SYMBOL(deny_write_access);
 
 /**
  * inode_permission - Check for access rights to a given inode
@@ -1751,6 +1752,7 @@ static inline unsigned long hash_name(const char *name, unsigned int *hashp)
 	*hashp = end_name_hash(hash);
 	return len;
 }
+EXPORT_SYMBOL(lookup_hash);
 
 #endif
 
@@ -2089,7 +2091,7 @@ int vfs_path_lookup(struct dentry *dentry, struct vfsmount *mnt,
  * needs parent already locked. Doesn't follow mounts.
  * SMP-safe.
  */
-static struct dentry *lookup_hash(struct nameidata *nd)
+struct dentry *lookup_hash(struct nameidata *nd)
 {
 	return __lookup_hash(&nd->last, nd->path.dentry, nd->flags);
 }

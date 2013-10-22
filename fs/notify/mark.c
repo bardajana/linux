@@ -109,6 +109,7 @@ void fsnotify_put_mark(struct fsnotify_mark *mark)
 		mark->free_mark(mark);
 	}
 }
+EXPORT_SYMBOL(fsnotify_put_mark);
 
 /*
  * Any time a mark is getting freed we end up here.
@@ -183,6 +184,7 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 
 	mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
 }
+EXPORT_SYMBOL(fsnotify_destroy_mark);
 
 void fsnotify_destroy_mark(struct fsnotify_mark *mark,
 			   struct fsnotify_group *group)
@@ -285,6 +287,7 @@ int fsnotify_add_mark(struct fsnotify_mark *mark, struct fsnotify_group *group,
 	mutex_unlock(&group->mark_mutex);
 	return ret;
 }
+EXPORT_SYMBOL(fsnotify_add_mark);
 
 /*
  * clear any marks in a group in which mark->flags & flags is true
@@ -336,6 +339,7 @@ void fsnotify_init_mark(struct fsnotify_mark *mark,
 	atomic_set(&mark->refcnt, 1);
 	mark->free_mark = free_mark;
 }
+EXPORT_SYMBOL(fsnotify_init_mark);
 
 static int fsnotify_mark_destroy(void *ignored)
 {

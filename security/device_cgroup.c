@@ -494,6 +494,7 @@ static inline bool has_children(struct dev_cgroup *devcgroup)
 
 	return !list_empty(&cgrp->children);
 }
+EXPORT_SYMBOL(__devcgroup_inode_permission);
 
 /*
  * Modify the exception list using allow/deny rules.

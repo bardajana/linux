@@ -1507,6 +1507,7 @@ static int invent_group_ids(struct mount *mnt, bool recurse)
 
 	return 0;
 }
+EXPORT_SYMBOL(iterate_mounts);
 
 /*
  *  @source_mnt : mount tree to be attached

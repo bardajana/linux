@@ -22,6 +22,7 @@
 #include <linux/srcu.h>
 #include <linux/rculist.h>
 #include <linux/wait.h>
+#include <linux/module.h>
 
 #include <linux/fsnotify_backend.h>
 #include "fsnotify.h"
@@ -74,6 +75,7 @@ void fsnotify_put_group(struct fsnotify_group *group)
 	if (atomic_dec_and_test(&group->refcnt))
 		fsnotify_final_destroy_group(group);
 }
+EXPORT_SYMBOL(fsnotify_put_group);
 
 /*
  * Create a new fsnotify_group and hold a reference for the group returned.
@@ -109,3 +111,4 @@ int fsnotify_fasync(int fd, struct file *file, int on)
 
 	return fasync_helper(fd, file, on, &group->fsn_fa) >= 0 ? 0 : -EIO;
 }
+EXPORT_SYMBOL(fsnotify_alloc_group);
