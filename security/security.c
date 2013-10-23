@@ -699,7 +699,6 @@ int security_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	return security_ops->file_ioctl(file, cmd, arg);
 }
-EXPORT_SYMBOL(security_file_mmap);
 
 static inline unsigned long mmap_prot(struct file *file, unsigned long prot)
 {
@@ -745,6 +744,7 @@ int security_mmap_file(struct file *file, unsigned long prot,
 		return ret;
 	return ima_file_mmap(file, prot);
 }
+EXPORT_SYMBOL(security_mmap_file);
 
 int security_mmap_addr(unsigned long addr)
 {

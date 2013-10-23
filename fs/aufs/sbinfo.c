@@ -27,11 +27,13 @@
  */
 void au_si_free(struct kobject *kobj)
 {
+	int i;
 	struct au_sbinfo *sbinfo;
 	char *locked __maybe_unused; /* debug only */
 
 	sbinfo = container_of(kobj, struct au_sbinfo, si_kobj);
-	AuDebugOn(!list_empty(&sbinfo->si_plink.head));
+	for (i = 0; i < AuPlink_NHASH; i++)
+		AuDebugOn(!hlist_empty(&sbinfo->si_plink[i].head));
 	AuDebugOn(atomic_read(&sbinfo->si_nowait.nw_len));
 
 	au_rw_write_lock(&sbinfo->si_rwsem);
@@ -53,7 +55,7 @@ void au_si_free(struct kobject *kobj)
 
 int au_si_alloc(struct super_block *sb)
 {
-	int err;
+	int err, i;
 	struct au_sbinfo *sbinfo;
 	static struct lock_class_key aufs_si;
 
@@ -89,6 +91,7 @@ int au_si_alloc(struct super_block *sb)
 	atomic_long_set(&sbinfo->si_nfiles, 0);
 
 	sbinfo->si_bend = -1;
+	sbinfo->si_last_br_id = AUFS_BRANCH_MAX / 2;
 
 	sbinfo->si_wbr_copyup = AuWbrCopyup_Def;
 	sbinfo->si_wbr_create = AuWbrCreate_Def;
@@ -97,6 +100,9 @@ int au_si_alloc(struct super_block *sb)
 
 	sbinfo->si_mntflags = au_opts_plink(AuOpt_Def);
 
+	sbinfo->si_xino_jiffy = jiffies;
+	sbinfo->si_xino_expire
+		= msecs_to_jiffies(AUFS_XINO_DEF_SEC * MSEC_PER_SEC);
 	mutex_init(&sbinfo->si_xib_mtx);
 	sbinfo->si_xino_brid = -1;
 	/* leave si_xib_last_pindex and si_xib_next_bit */
@@ -106,7 +112,8 @@ int au_si_alloc(struct super_block *sb)
 	sbinfo->si_rdhash = AUFS_RDHASH_DEF;
 	sbinfo->si_dirwh = AUFS_DIRWH_DEF;
 
-	au_spl_init(&sbinfo->si_plink);
+	for (i = 0; i < AuPlink_NHASH; i++)
+		au_sphl_init(sbinfo->si_plink + i);
 	init_waitqueue_head(&sbinfo->si_plink_wq);
 	spin_lock_init(&sbinfo->si_plink_maint_lock);
 

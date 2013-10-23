@@ -39,8 +39,15 @@ struct au_wbr_copyup_operations {
 	int (*copyup)(struct dentry *dentry);
 };
 
+#define AuWbr_DIR	1		/* target is a dir */
+#define AuWbr_PARENT	(1 << 1)	/* always require a parent */
+
+#define au_ftest_wbr(flags, name)	((flags) & AuWbr_##name)
+#define au_fset_wbr(flags, name)	{ (flags) |= AuWbr_##name; }
+#define au_fclr_wbr(flags, name)	{ (flags) &= ~AuWbr_##name; }
+
 struct au_wbr_create_operations {
-	int (*create)(struct dentry *dentry, int isdir);
+	int (*create)(struct dentry *dentry, unsigned int flags);
 	int (*init)(struct super_block *sb);
 	int (*fin)(struct super_block *sb);
 };
@@ -54,6 +61,20 @@ struct au_wbr_mfs {
 	unsigned long long	mfsrr_bytes;
 	unsigned long long	mfsrr_watermark;
 };
+
+struct pseudo_link {
+	union {
+		struct hlist_node hlist;
+		struct rcu_head rcu;
+	};
+	struct inode *inode;
+};
+
+#define AuPlink_NHASH 100
+static inline int au_plink_hash(ino_t ino)
+{
+	return ino % AuPlink_NHASH;
+}
 
 struct au_branch;
 struct au_sbinfo {
@@ -116,6 +137,8 @@ struct au_sbinfo {
 	unsigned long		si_xib_last_pindex;
 	int			si_xib_next_bit;
 	aufs_bindex_t		si_xino_brid;
+	unsigned long		si_xino_jiffy;
+	unsigned long		si_xino_expire;
 	/* reserved for future use */
 	/* unsigned long long	si_xib_limit; */	/* Max xib file size */
 
@@ -145,7 +168,7 @@ struct au_sbinfo {
 	/* int			si_rendir; */
 
 	/* pseudo_link list */
-	struct au_splhead	si_plink;
+	struct au_sphlhead	si_plink[AuPlink_NHASH];
 	wait_queue_head_t	si_plink_wq;
 	spinlock_t		si_plink_maint_lock;
 	pid_t			si_plink_maint_pid;
@@ -158,7 +181,9 @@ struct au_sbinfo {
 	 */
 	struct kobject		si_kobj;
 #ifdef CONFIG_DEBUG_FS
-	struct dentry		 *si_dbgaufs, *si_dbgaufs_xib;
+	struct dentry		 *si_dbgaufs;
+	struct dentry		 *si_dbgaufs_plink;
+	struct dentry		 *si_dbgaufs_xib;
 #ifdef CONFIG_AUFS_EXPORT
 	struct dentry		 *si_dbgaufs_xigen;
 #endif
@@ -255,6 +280,10 @@ void si_pid_clr_slow(struct super_block *sb);
 extern struct au_wbr_copyup_operations au_wbr_copyup_ops[];
 extern struct au_wbr_create_operations au_wbr_create_ops[];
 int au_cpdown_dirs(struct dentry *dentry, aufs_bindex_t bdst);
+int au_wbr_nonopq(struct dentry *dentry, aufs_bindex_t bindex);
+
+/* mvdown.c */
+int au_mvdown(struct dentry *dentry, struct aufs_mvdown __user *arg);
 
 /* ---------------------------------------------------------------------- */
 
@@ -349,6 +378,7 @@ static inline void dbgaufs_si_null(struct au_sbinfo *sbinfo)
 	/* AuRwMustWriteLock(&sbinfo->si_rwsem); */
 #ifdef CONFIG_DEBUG_FS
 	sbinfo->si_dbgaufs = NULL;
+	sbinfo->si_dbgaufs_plink = NULL;
 	sbinfo->si_dbgaufs_xib = NULL;
 #ifdef CONFIG_AUFS_EXPORT
 	sbinfo->si_dbgaufs_xigen = NULL;

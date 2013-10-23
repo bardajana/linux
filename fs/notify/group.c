@@ -66,6 +66,7 @@ void fsnotify_get_group(struct fsnotify_group *group)
 {
 	atomic_inc(&group->refcnt);
 }
+EXPORT_SYMBOL(fsnotify_get_group);
 
 /*
  * Drop a reference to a group.  Free it if it's through.

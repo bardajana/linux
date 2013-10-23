@@ -101,7 +101,18 @@ struct au_pin {
 	struct dentry *parent;
 	struct au_hinode *hdir;
 	struct vfsmount *h_mnt;
+
+	/* temporary unlock/relock for copyup */
+	struct dentry *h_dentry, *h_parent;
+	struct au_branch *br;
+	struct task_struct *task;
 };
+
+void au_pin_hdir_unlock(struct au_pin *p);
+int au_pin_hdir_relock(struct au_pin *p);
+void au_pin_hdir_set_owner(struct au_pin *p, struct task_struct *task);
+void au_pin_hdir_acquire_nest(struct au_pin *p);
+void au_pin_hdir_release(struct au_pin *p);
 
 /* ---------------------------------------------------------------------- */
 
@@ -144,7 +155,8 @@ extern struct inode_operations aufs_iop, aufs_symlink_iop, aufs_dir_iop;
 
 /* au_wr_dir flags */
 #define AuWrDir_ADD_ENTRY	1
-#define AuWrDir_ISDIR		(1 << 1)
+#define AuWrDir_TMP_WHENTRY	(1 << 1)
+#define AuWrDir_ISDIR		(1 << 2)
 #define au_ftest_wrdir(flags, name)	((flags) & AuWrDir_##name)
 #define au_fset_wrdir(flags, name) \
 	do { (flags) |= AuWrDir_##name; } while (0)
@@ -170,13 +182,14 @@ void au_unpin(struct au_pin *pin);
 /* i_op_add.c */
 int au_may_add(struct dentry *dentry, aufs_bindex_t bindex,
 	       struct dentry *h_parent, int isdir);
-int aufs_mknod(struct inode *dir, struct dentry *dentry, int mode, dev_t dev);
+int aufs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
+	       dev_t dev);
 int aufs_symlink(struct inode *dir, struct dentry *dentry, const char *symname);
-int aufs_create(struct inode *dir, struct dentry *dentry, int mode,
-		struct nameidata *nd);
+int aufs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		bool want_excl);
 int aufs_link(struct dentry *src_dentry, struct inode *dir,
 	      struct dentry *dentry);
-int aufs_mkdir(struct inode *dir, struct dentry *dentry, int mode);
+int aufs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
 
 /* i_op_del.c */
 int au_wr_dir_need_wh(struct dentry *dentry, int isdir, aufs_bindex_t *bcpup);

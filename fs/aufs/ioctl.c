@@ -20,8 +20,11 @@
  * ioctl
  * plink-management and readdir in userspace.
  * assist the pathconf(3) wrapper library.
+ * move-down
  */
 
+#include <linux/compat.h>
+#include <linux/file.h>
 #include "aufs.h"
 
 static int au_wbr_fd(struct path *path, struct aufs_wbr_fd __user *arg)
@@ -93,7 +96,8 @@ static int au_wbr_fd(struct path *path, struct aufs_wbr_fd __user *arg)
 	}
 	AuDbg("wbi %d\n", wbi);
 	if (wbi >= 0)
-		h_file = au_h_open(root, wbi, wbrfd.oflags, NULL);
+		h_file = au_h_open(root, wbi, wbrfd.oflags, NULL,
+				   /*force_wr*/0);
 
 out_unlock:
 	aufs_read_unlock(root, AuLock_IR);
@@ -148,6 +152,10 @@ long aufs_ioctl_nondir(struct file *file, unsigned int cmd, unsigned long arg)
 	long err;
 
 	switch (cmd) {
+	case AUFS_CTL_MVDOWN:
+		err = au_mvdown(file->f_dentry, (void __user *)arg);
+		break;
+
 	case AUFS_CTL_WBR_FD:
 		err = au_wbr_fd(&file->f_path, (void __user *)arg);
 		break;
@@ -186,11 +194,9 @@ long aufs_compat_ioctl_dir(struct file *file, unsigned int cmd,
 	return err;
 }
 
-#if 0 /* unused yet */
 long aufs_compat_ioctl_nondir(struct file *file, unsigned int cmd,
 			      unsigned long arg)
 {
 	return aufs_ioctl_nondir(file, cmd, (unsigned long)compat_ptr(arg));
 }
-#endif
 #endif

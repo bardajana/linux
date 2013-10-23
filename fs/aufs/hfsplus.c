@@ -28,7 +28,8 @@
 
 #include "aufs.h"
 
-struct file *au_h_open_pre(struct dentry *dentry, aufs_bindex_t bindex)
+struct file *au_h_open_pre(struct dentry *dentry, aufs_bindex_t bindex,
+			   int force_wr)
 {
 	struct file *h_file;
 	struct dentry *h_dentry;
@@ -36,14 +37,13 @@ struct file *au_h_open_pre(struct dentry *dentry, aufs_bindex_t bindex)
 	h_dentry = au_h_dptr(dentry, bindex);
 	AuDebugOn(!h_dentry);
 	AuDebugOn(!h_dentry->d_inode);
-	IMustLock(h_dentry->d_inode);
 
 	h_file = NULL;
 	if (au_test_hfsplus(h_dentry->d_sb)
 	    && S_ISREG(h_dentry->d_inode->i_mode))
 		h_file = au_h_open(dentry, bindex,
 				   O_RDONLY | O_NOATIME | O_LARGEFILE,
-				   /*file*/NULL);
+				   /*file*/NULL, force_wr);
 	return h_file;
 }
 

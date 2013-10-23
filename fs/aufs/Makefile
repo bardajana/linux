@@ -1,19 +1,11 @@
 
-include ${src}/magic.mk
-ifeq (${CONFIG_AUFS_FS},m)
-include ${src}/conf.mk
-endif
--include ${src}/priv_def.mk
+include ${srctree}/${src}/magic.mk
 
 # cf. include/linux/kernel.h
 # enable pr_debug
 ccflags-y += -DDEBUG
 # sparse requires the full pathname
-ifdef M
-ccflags-y += -include ${M}/../../include/linux/aufs_type.h
-else
 ccflags-y += -include ${srctree}/include/linux/aufs_type.h
-endif
 
 obj-$(CONFIG_AUFS_FS) += aufs.o
 aufs-y := module.o sbinfo.o super.o branch.o xino.o sysaufs.o opts.o \
@@ -24,7 +16,7 @@ aufs-y := module.o sbinfo.o super.o branch.o xino.o sysaufs.o opts.o \
 	finfo.o file.o f_op.o \
 	dir.o vdir.o \
 	iinfo.o inode.o i_op.o i_op_add.o i_op_del.o i_op_ren.o \
-	ioctl.o
+	mvdown.o ioctl.o
 
 # all are boolean
 aufs-$(CONFIG_PROC_FS) += procfs.o plink.o

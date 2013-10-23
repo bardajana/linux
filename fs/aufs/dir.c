@@ -25,20 +25,32 @@
 
 void au_add_nlink(struct inode *dir, struct inode *h_dir)
 {
+	unsigned int nlink;
+
 	AuDebugOn(!S_ISDIR(dir->i_mode) || !S_ISDIR(h_dir->i_mode));
 
-	dir->i_nlink += h_dir->i_nlink - 2;
+	nlink = dir->i_nlink;
+	nlink += h_dir->i_nlink - 2;
 	if (h_dir->i_nlink < 2)
-		dir->i_nlink += 2;
+		nlink += 2;
+	smp_mb();
+	/* 0 can happen in revaliding */
+	set_nlink(dir, nlink);
 }
 
 void au_sub_nlink(struct inode *dir, struct inode *h_dir)
 {
+	unsigned int nlink;
+
 	AuDebugOn(!S_ISDIR(dir->i_mode) || !S_ISDIR(h_dir->i_mode));
 
-	dir->i_nlink -= h_dir->i_nlink - 2;
+	nlink = dir->i_nlink;
+	nlink -= h_dir->i_nlink - 2;
 	if (h_dir->i_nlink < 2)
-		dir->i_nlink -= 2;
+		nlink -= 2;
+	smp_mb();
+	/* nlink == 0 means the branch-fs is broken */
+	set_nlink(dir, nlink);
 }
 
 loff_t au_dir_size(struct file *file, struct dentry *dentry)
@@ -50,19 +62,16 @@ loff_t au_dir_size(struct file *file, struct dentry *dentry)
 
 	sz = 0;
 	if (file) {
-		AuDebugOn(!file->f_dentry);
-		AuDebugOn(!file->f_dentry->d_inode);
-		AuDebugOn(!S_ISDIR(file->f_dentry->d_inode->i_mode));
+		AuDebugOn(!file_inode(file));
+		AuDebugOn(!S_ISDIR(file_inode(file)->i_mode));
 
 		bend = au_fbend_dir(file);
 		for (bindex = au_fbstart(file);
 		     bindex <= bend && sz < KMALLOC_MAX_SIZE;
 		     bindex++) {
 			h_file = au_hf_dir(file, bindex);
-			if (h_file
-			    && h_file->f_dentry
-			    && h_file->f_dentry->d_inode)
-				sz += i_size_read(h_file->f_dentry->d_inode);
+			if (h_file && file_inode(h_file))
+				sz += vfsub_f_size_read(h_file);
 		}
 	} else {
 		AuDebugOn(!dentry);
@@ -120,7 +129,7 @@ static int reopen_dir(struct file *file)
 		if (h_file)
 			continue;
 
-		h_file = au_h_open(dentry, bindex, flags, file);
+		h_file = au_h_open(dentry, bindex, flags, file, /*force_wr*/0);
 		err = PTR_ERR(h_file);
 		if (IS_ERR(h_file))
 			goto out; /* close all? */
@@ -159,7 +168,7 @@ static int do_open_dir(struct file *file, int flags)
 		if (!h_dentry)
 			continue;
 
-		h_file = au_h_open(dentry, bindex, flags, file);
+		h_file = au_h_open(dentry, bindex, flags, file, /*force_wr*/0);
 		if (IS_ERR(h_file)) {
 			err = PTR_ERR(h_file);
 			break;
@@ -213,9 +222,6 @@ static int aufs_release_dir(struct inode *inode __maybe_unused,
 	finfo = au_fi(file);
 	fidir = finfo->fi_hdir;
 	if (fidir) {
-		/* remove me from sb->s_files */
-		file_sb_list_del(file);
-
 		vdir_cache = fidir->fd_vdir_cache; /* lock-free */
 		if (vdir_cache)
 			au_vdir_free(vdir_cache);
@@ -303,7 +309,7 @@ static int au_do_fsync_dir(struct file *file, int datasync)
 		goto out;
 
 	sb = file->f_dentry->d_sb;
-	inode = file->f_dentry->d_inode;
+	inode = file_inode(file);
 	bend = au_fbend_dir(file);
 	for (bindex = au_fbstart(file); !err && bindex <= bend; bindex++) {
 		h_file = au_hf_dir(file, bindex);
@@ -320,16 +326,18 @@ out:
 /*
  * @file may be NULL
  */
-static int aufs_fsync_dir(struct file *file, int datasync)
+static int aufs_fsync_dir(struct file *file, loff_t start, loff_t end,
+			  int datasync)
 {
 	int err;
 	struct dentry *dentry;
 	struct super_block *sb;
-
-	dentry = file->f_dentry;
-	IMustLock(dentry->d_inode);
+	struct mutex *mtx;
 
 	err = 0;
+	dentry = file->f_dentry;
+	mtx = &dentry->d_inode->i_mutex;
+	mutex_lock(mtx);
 	sb = dentry->d_sb;
 	si_noflush_read_lock(sb);
 	if (file)
@@ -344,17 +352,21 @@ static int aufs_fsync_dir(struct file *file, int datasync)
 		fi_write_unlock(file);
 
 	si_read_unlock(sb);
+	mutex_unlock(mtx);
 	return err;
 }
 
 /* ---------------------------------------------------------------------- */
 
-static int aufs_readdir(struct file *file, void *dirent, filldir_t filldir)
+static int aufs_iterate(struct file *file, struct dir_context *ctx)
 {
 	int err;
 	struct dentry *dentry;
 	struct inode *inode, *h_inode;
 	struct super_block *sb;
+
+	AuDbg("%.*s, ctx{%pf, %llu}\n",
+	      AuDLNPair(file->f_dentry), ctx->actor, ctx->pos);
 
 	dentry = file->f_dentry;
 	inode = dentry->d_inode;
@@ -374,7 +386,7 @@ static int aufs_readdir(struct file *file, void *dirent, filldir_t filldir)
 
 	h_inode = au_h_iptr(inode, au_ibstart(inode));
 	if (!au_test_nfsd()) {
-		err = au_vdir_fill_de(file, dirent, filldir);
+		err = au_vdir_fill_de(file, ctx);
 		fsstack_copy_attr_atime(inode, h_inode);
 	} else {
 		/*
@@ -384,7 +396,7 @@ static int aufs_readdir(struct file *file, void *dirent, filldir_t filldir)
 		atomic_inc(&h_inode->i_count);
 		di_read_unlock(dentry, AuLock_IR);
 		si_read_unlock(sb);
-		err = au_vdir_fill_de(file, dirent, filldir);
+		err = au_vdir_fill_de(file, ctx);
 		fsstack_copy_attr_atime(inode, h_inode);
 		fi_write_unlock(file);
 		iput(h_inode);
@@ -418,17 +430,19 @@ out:
 #endif
 
 struct test_empty_arg {
+	struct dir_context ctx;
 	struct au_nhash *whlist;
 	unsigned int flags;
 	int err;
 	aufs_bindex_t bindex;
 };
 
-static int test_empty_cb(void *__arg, const char *__name, int namelen,
-			 loff_t offset __maybe_unused, u64 ino,
+static int test_empty_cb(struct dir_context *ctx, const char *__name,
+			 int namelen, loff_t offset __maybe_unused, u64 ino,
 			 unsigned int d_type)
 {
-	struct test_empty_arg *arg = __arg;
+	struct test_empty_arg *arg = container_of(ctx, struct test_empty_arg,
+						  ctx);
 	char *name = (void *)__name;
 
 	arg->err = 0;
@@ -466,21 +480,21 @@ static int do_test_empty(struct dentry *dentry, struct test_empty_arg *arg)
 
 	h_file = au_h_open(dentry, arg->bindex,
 			   O_RDONLY | O_NONBLOCK | O_DIRECTORY | O_LARGEFILE,
-			   /*file*/NULL);
+			   /*file*/NULL, /*force_wr*/0);
 	err = PTR_ERR(h_file);
 	if (IS_ERR(h_file))
 		goto out;
 
 	err = 0;
 	if (!au_opt_test(au_mntflags(dentry->d_sb), UDBA_NONE)
-	    && !h_file->f_dentry->d_inode->i_nlink)
+	    && !file_inode(h_file)->i_nlink)
 		goto out_put;
 
 	do {
 		arg->err = 0;
 		au_fclr_testempty(arg->flags, CALLED);
 		/* smp_mb(); */
-		err = vfsub_readdir(h_file, test_empty_cb, arg);
+		err = vfsub_iterate_dir(h_file, &arg->ctx);
 		if (err >= 0)
 			err = arg->err;
 	} while (!err && au_ftest_testempty(arg->flags, CALLED));
@@ -541,7 +555,11 @@ int au_test_empty_lower(struct dentry *dentry)
 	unsigned int rdhash;
 	aufs_bindex_t bindex, bstart, btail;
 	struct au_nhash whlist;
-	struct test_empty_arg arg;
+	struct test_empty_arg arg = {
+		.ctx = {
+			.actor = au_diractor(test_empty_cb)
+		}
+	};
 
 	SiMustAnyLock(dentry->d_sb);
 
@@ -583,7 +601,11 @@ out:
 int au_test_empty(struct dentry *dentry, struct au_nhash *whlist)
 {
 	int err;
-	struct test_empty_arg arg;
+	struct test_empty_arg arg = {
+		.ctx = {
+			.actor = au_diractor(test_empty_cb)
+		}
+	};
 	aufs_bindex_t bindex, btail;
 
 	err = 0;
@@ -611,7 +633,7 @@ const struct file_operations aufs_dir_fop = {
 	.owner		= THIS_MODULE,
 	.llseek		= default_llseek,
 	.read		= generic_read_dir,
-	.readdir	= aufs_readdir,
+	.iterate	= aufs_iterate,
 	.unlocked_ioctl	= aufs_ioctl_dir,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= aufs_compat_ioctl_dir,

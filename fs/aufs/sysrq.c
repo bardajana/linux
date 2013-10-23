@@ -78,7 +78,7 @@ static void sysrq_sb(struct super_block *sb)
 		spin_lock(&inode_sb_list_lock);
 		list_for_each_entry(i, &sb->s_inodes, i_sb_list) {
 			spin_lock(&i->i_lock);
-			if (1 || list_empty(&i->i_dentry))
+			if (1 || hlist_empty(&i->i_dentry))
 				au_dpri_inode(i);
 			spin_unlock(&i->i_lock);
 		}
@@ -86,14 +86,14 @@ static void sysrq_sb(struct super_block *sb)
 	}
 #endif
 	pr("files\n");
-	lg_global_lock(files_lglock);
+	lg_global_lock(&files_lglock);
 	do_file_list_for_each_entry(sb, file) {
 		umode_t mode;
-		mode = file->f_dentry->d_inode->i_mode;
+		mode = file_inode(file)->i_mode;
 		if (!special_file(mode) || au_special_file(mode))
 			au_dpri_file(file);
 	} while_file_list_for_each_entry;
-	lg_global_unlock(files_lglock);
+	lg_global_unlock(&files_lglock);
 	pr("done\n");
 
 #undef pr

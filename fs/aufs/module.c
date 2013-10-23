@@ -65,6 +65,12 @@ static void au_cache_fin(void)
 {
 	int i;
 
+	/*
+	 * Make sure all delayed rcu free inodes are flushed before we
+	 * destroy cache.
+	 */
+	rcu_barrier();
+
 	/* excluding AuCache_HNOTIFY */
 	BUILD_BUG_ON(AuCache_HNOTIFY + 1 != AuCache_Last);
 	for (i = 0; i < AuCache_HNOTIFY; i++)
@@ -79,6 +85,10 @@ static void au_cache_fin(void)
 int au_dir_roflags;
 
 #ifdef CONFIG_AUFS_SBILIST
+/*
+ * iterate_supers_type() doesn't protect us from
+ * remounting (branch management)
+ */
 struct au_splhead au_sbilist;
 #endif
 

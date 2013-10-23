@@ -212,7 +212,7 @@ static int hn_gen_by_inode(char *name, unsigned int nlen, struct inode *inode,
 		AuDebugOn(!name);
 		au_iigen_dec(inode);
 		spin_lock(&inode->i_lock);
-		list_for_each_entry(d, &inode->i_dentry, d_alias) {
+		hlist_for_each_entry(d, &inode->i_dentry, d_alias) {
 			spin_lock(&d->d_lock);
 			dname = &d->d_name;
 			if (dname->len != nlen
@@ -388,7 +388,7 @@ static struct dentry *lookup_wlock_by_name(char *name, unsigned int nlen,
 			au_digen_dec(d);
 		else
 			goto cont_unlock;
-		if (d->d_count) {
+		if (d_count(d)) {
 			dentry = dget_dlock(d);
 			spin_unlock(&d->d_lock);
 			break;
